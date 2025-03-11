@@ -14,5 +14,5 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Delay execution to ensure Webflow's tabs are initialized
-    setTimeout(activateTab, 500);
+    setTimeout(activateTab, 100);
 });
