@@ -54,12 +54,32 @@ document.addEventListener("DOMContentLoaded", function () {
     const datePicked = document.querySelector('[ab-form="date-picked"]');
     const warningUnavailable = document.querySelector('[warning="date-unavailable"]');
     
-    datePicked.addEventListener('input', function () {
+    function checkDate() {
         const pickedDate = datePicked.value.trim();
+        console.log("Checking date:", pickedDate);
         if (bookedDates.has(pickedDate)) {
             warningUnavailable.style.display = 'block';
         } else {
             warningUnavailable.style.display = 'none';
         }
-    });
+    }
+    
+    datePicked.addEventListener('input', checkDate);
+    datePicked.addEventListener('change', checkDate);
+    
+    // Handle programmatic updates or pastes
+    const observer = new MutationObserver(() => checkDate());
+    observer.observe(datePicked, { attributes: true, attributeFilter: ['value'] });
+    
+    // Polling fallback for JS datepickers
+    let lastDateValue = datePicked.value;
+    setInterval(() => {
+        if (datePicked.value !== lastDateValue) {
+            lastDateValue = datePicked.value;
+            checkDate();
+        }
+    }, 500);
+    
+    // Ensure booked dates are correctly read from elements
+    console.log("Booked Dates:", bookedDates);
 });
