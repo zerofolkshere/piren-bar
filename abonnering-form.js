@@ -20,24 +20,30 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
-    // Guests field validation - allow user input properly
+    // Guests field validation - allow full user input control
     const guestInput = document.querySelector('[ab-form="guests"]');
     const guestWarning = document.querySelector('[warning="guest-capacity"]');
     
     guestInput.addEventListener('input', function (e) {
         let val = e.target.value.replace(/\D/g, ''); // Remove non-numeric characters
-        if (val !== "") {
-            val = Math.max(40, Math.min(134, parseInt(val, 10)));
-        }
-        e.target.value = val;
+        e.target.value = val; // Allow any number while typing
 
-        // Show guest capacity warning if over 48
-        guestWarning.style.display = val > 48 ? 'block' : 'none';
+        // Show guest capacity warning if over 48 in real-time
+        if (val !== "" && parseInt(val, 10) > 48) {
+            guestWarning.style.display = 'block';
+        } else {
+            guestWarning.style.display = 'none';
+        }
     });
 
-    guestInput.addEventListener('focus', function (e) {
-        if (e.target.value === "") {
-            e.target.value = "40"; // Default to minimum when focused but empty
+    guestInput.addEventListener('blur', function (e) {
+        let val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+            if (val > 134) val = 134;
+            if (val < 40) val = 40;
+            e.target.value = val;
+        } else {
+            e.target.value = "40"; // Default to minimum if empty
         }
     });
 
@@ -49,7 +55,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const warningUnavailable = document.querySelector('[warning="date-unavailable"]');
     
     datePicked.addEventListener('input', function () {
-        if (bookedDates.has(datePicked.value.trim())) {
+        const pickedDate = datePicked.value.trim();
+        if (bookedDates.has(pickedDate)) {
             warningUnavailable.style.display = 'block';
         } else {
             warningUnavailable.style.display = 'none';
