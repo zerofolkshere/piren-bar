@@ -8,6 +8,12 @@ document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll('[ab-form="time"]').forEach(input => {
         input.addEventListener('blur', function (e) {
             let val = e.target.value.replace(/[^0-9:]/g, ''); // Remove invalid characters
+
+            // Auto-add ":00" if only the hour is entered
+            if (/^\d{2}$/.test(val) || /^\d{2}:$/.test(val)) {
+                val = val.replace(':', '') + ":00";
+            }
+
             val = val.replace(/^([0-9]{2})([0-9]{2})$/, '$1:$2'); // Auto-add colon if needed
             
             let [hh, mm] = val.split(':');
