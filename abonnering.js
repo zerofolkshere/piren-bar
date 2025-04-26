@@ -1,12 +1,9 @@
 /* -------------------------------------------------------------
- * Booking form logic – 27 Apr 2025  (stable, full source)
+ * Booking form logic – 27 Apr 2025 (stable, full source)
  * -------------------------------------------------------------
- * ➊ Max guests = 127
- * ➋ Dynamic welcome‑drink (max = guests×2) & drink‑package (max=5)
- * ➌ Min‑spend calculator by month + guest scaling up to 80
- * ➍ Capacity / date warnings, map switch, VAT & price estimate
- * NOTE: keep this <script> AFTER the HTML form so all elements exist.
- * ------------------------------------------------------------- */
+ */
+
+document.addEventListener('DOMContentLoaded', function() {
 
 (function(){
     if(!document.querySelector('[ab-form="guests"]')) return; // abort if form not present
@@ -189,11 +186,13 @@
     }
 
     /*────────────────── GLOBAL EVENT HOOKS ─────────────────*/
-    /* generic triggers */
     qsa('input[ab-est="true"], input[type="radio"][ab-price-connect], input[type="radio"][ab-price-connect-2], input[name="welcome-drink"], input[name="drink-package"]').forEach(el=>{
         ['input','change'].forEach(evt=>el.addEventListener(evt, updatePriceEstimate));
     });
 
     /* fire once on load */
     updatePriceEstimate();
-})();
+
+})(); // end inner IIFE
+
+}); // end DOMContentLoaded
