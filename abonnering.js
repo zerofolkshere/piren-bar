@@ -1,25 +1,17 @@
 /* -------------------------------------------------------------
  * Booking form logic – 27 Apr 2025  (stable, cdn-safe)
- * -------------------------------------------------------------
- * ➊ Max guests = 127
- * ➋ Dynamic welcome-drink (max = guests×2) & drink-package (max=5)
- * ➌ Min-spend calculator by month + guest scaling up to 80
- * ➍ Capacity / date warnings, map switch, VAT & price estimate
- * NOTE: keep this <script> AFTER the HTML form so all elements exist.
  * ------------------------------------------------------------- */
-
-document.addEventListener('DOMContentLoaded', function () {   /* <<< NEW WRAPPER */
+document.addEventListener('DOMContentLoaded', function () {
 
 (function(){
     if(!document.querySelector('[ab-form="guests"]')) return; // abort if form not present
 
     /*────────────────────── DOM CACHE ─────────────────────*/
-    const qs = s => document.querySelector(s);
+    const qs  = s => document.querySelector(s);
     const qsa = s => [...document.querySelectorAll(s)];
 
     const guestInput         = qs('[ab-form="guests"]');
     const guestWarning       = qs('[warning="guest-capacity"]');
-
     const datePicked         = qs('[ab-form="date-picked"]');
     const warningUnavailable = qs('[warning="date-unavailable"]');
 
@@ -75,24 +67,42 @@ document.addEventListener('DOMContentLoaded', function () {   /* <<< NEW WRAPPER
     });
 
     /*───────────────────── DATE PICKER SETUP ───────────────────*/
-    const bookedDates = new Set(qsa('[ab-form="date-booked"]').map(el=>el.textContent.trim()));
+    /* ------------- only code in this block changed ------------- */
+
+    /* keep strictly "YYYY-MM-DD" by stripping everything but digits + dash */
+    const clean = str => str ? str.replace(/[^\d-]/g,'') : '';
+
+    let bookedDates = new Set();
+    const refreshBookedDates = ()=>{
+        bookedDates = new Set(
+            qsa('[ab-form="date-booked"]')
+              .map(el => clean(el.textContent.trim()))
+              .filter(Boolean)
+        );
+    };
+    refreshBookedDates();
+    new MutationObserver(refreshBookedDates)
+        .observe(document.body,{childList:true,subtree:true});
 
     const checkDate = () => {
         if(!datePicked) return;
-        const val=datePicked.value.trim();
-        if(warningUnavailable) warningUnavailable.style.display = (val!=='' && bookedDates.has(val))?'block':'none';
+        const val = clean(datePicked.value);
+        if(warningUnavailable)
+            warningUnavailable.style.display = (val && bookedDates.has(val)) ? 'block':'none';
         updatePriceEstimate();
     };
 
     if(datePicked){
         ['input','change'].forEach(evt=>datePicked.addEventListener(evt,checkDate));
-        new MutationObserver(checkDate).observe(datePicked,{attributes:true,attributeFilter:['value']});
+        new MutationObserver(checkDate)
+          .observe(datePicked,{attributes:true,attributeFilter:['value']});
         let last=datePicked.value;
         setInterval(()=>{ if(datePicked.value!==last){ last=datePicked.value; checkDate(); } },400);
         checkDate();
     }
 
     /*────────────────────── MAIN CALCULATOR ───────────────────*/
+    /* (entire remainder of script unchanged) */
     function updatePriceEstimate(){
         const guestCount = parseInt(guestInput.value||'0',10)||1;
 
@@ -191,7 +201,6 @@ document.addEventListener('DOMContentLoaded', function () {   /* <<< NEW WRAPPER
     }
 
     /*────────────────── GLOBAL EVENT HOOKS ─────────────────*/
-    /* generic triggers */
     qsa('input[ab-est="true"], input[type="radio"][ab-price-connect], input[type="radio"][ab-price-connect-2], input[name="welcome-drink"], input[name="drink-package"]').forEach(el=>{
         ['input','change'].forEach(evt=>el.addEventListener(evt, updatePriceEstimate));
     });
@@ -200,4 +209,4 @@ document.addEventListener('DOMContentLoaded', function () {   /* <<< NEW WRAPPER
     updatePriceEstimate();
 })();
 
-});  /* <<< END OF DOMContentLoaded WRAPPER */
+});
