@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const priceInputHidden   = qs('[ab-form="price-input"]');
     const momsField          = qs('[ab-form="sum-moms"]');
     const minSpendField      = qs('[ab-form="sum-min-spend"]');
+    const minSpendInput      = qs('[ab-form="input-min-spend"]');   /* ← added */
 
     /*─────────────────── INITIAL VISUAL STATE ───────────────────*/
     if(guestWarning)       guestWarning.style.display       = 'none';
@@ -179,6 +180,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if(guestCount<=80) ms = (ms/134)*guestCount;
             minSpendField.textContent = formatSEK(ms);
             minSpendField.setAttribute('data-raw', ms.toFixed(2));
+            if(minSpendInput) minSpendInput.value = ms.toFixed(2);  /* ← added */
 
             /* reached? */
             const r=qs('[ab-form="min-reached"]');
