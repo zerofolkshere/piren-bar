@@ -46,7 +46,7 @@
           });
           if (!r.ok) throw new Error(await r.text());
           form.reset();
-          alert('Tack! Du är nu registrerad.');
+          alert('Tack! Vi har tagit emot din förfrågan.');
         } catch (err) {
           console.error('[aw-signup] error', err);
           alert('Ett fel inträffade – försök igen.');
