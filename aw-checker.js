@@ -25,7 +25,7 @@
     const submitBtn = form.querySelector('[type="submit"]');
     const okElem  = form.querySelector('[aw-match="true"]');
     const badElem = form.querySelector('[aw-match="false"]');
-    const show = (el, bool) => el && (el.style.display = bool ? 'block' : 'none');
+    const show = (el, bool) => el && (el.style.display = bool ? 'flex' : 'none');
 
     /* Hide match indicators at load */
     show(okElem, false);
