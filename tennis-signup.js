@@ -1,5 +1,5 @@
 (function () {
-  const API_BASE = 'https://piren-aw-production.up.railway.app';
+  const API_BASE = 'piren-tennis.up.railway.app';
 
   function onReady(cb) {
     if (window.Webflow && Webflow.push) Webflow.push(cb);
