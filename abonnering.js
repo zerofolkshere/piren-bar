@@ -16,20 +16,25 @@ function isValidSignature(req) {
   const secret = process.env.WEBFLOW_SECRET;
   const sig = req.headers["x-webflow-signature"];
   if (!secret || !sig) return false;
+
   const hash = crypto
     .createHmac("sha256", secret)
     .update(JSON.stringify(req.body))
     .digest("hex");
+
   return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(hash));
 }
 
 // ⏰ Safely format date and time strings into ISO
 function formatISOTime(date, time) {
   if (!date || !time) throw new Error("Missing date or time");
+
   const [year, month, day] = date.split("-");
   const [hour, minute] = time.split(":");
+
   const t = new Date(+year, +month - 1, +day, +hour, +minute);
   if (isNaN(t)) throw new Error(`Invalid time value: ${date} ${time}`);
+
   return t.toISOString();
 }
 
@@ -37,10 +42,12 @@ function formatISOTime(date, time) {
 function asCheckbox(value) {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "boolean") return value;
+
   if (typeof value === "string") {
     const v = value.trim().toLowerCase();
     return ["true", "on", "yes", "1", "ja"].includes(v);
   }
+
   return false;
 }
 
@@ -57,6 +64,7 @@ app.post("/webflow-form", async (req, res) => {
 
     const fields = req.body?.payload?.data;
     const submissionId = req.body?.payload?.id;
+
     if (!fields || !submissionId) {
       throw new Error("❌ Missing payload.data or payload.id in request");
     }
@@ -73,40 +81,44 @@ app.post("/webflow-form", async (req, res) => {
 
     const airtablePayload = {
       fields: {
-        Namn: fields.namn,
-        "E-Post": fields.email,
-        Telefon: fields.phone,
-        Företag: fields.company,
-        "Antal Gäster": +fields["guest-total"],
-        Bokningsdatum: fields["date-picker"],
+        Namn: fields.namn || "",
+        "E-Post": fields.email || "",
+        Telefon: fields.phone || "",
+        Företag: fields.company || "",
+        "Antal Gäster": Number(fields["guest-total"] || 0),
+        Bokningsdatum: fields["date-picker"] || "",
         Starttid: start,
         Sluttid: end,
 
-        // --- menu QTs -----------------
-        "Småplock 1": fields["Småplock 1"],
-        "Småplock 1 QT": +fields["Småplock 1 Quantity"],
-        "Småplock 2": fields["Småplock 2"],
-        "Småplock 2 QT": +fields["Småplock 2 Quantity"],
-        "Småplock 3": fields["Småplock 3"],
-        "Småplock 3 QT": +fields["Småplock 3 Quantity"],
-        "Småplock 4": fields["Småplock 4"],
-        "Småplock 4 QT": +fields["Småplock 4 Quantity"],
+        // --- menu items -----------------------------
+        "Småplock 1": fields["Småplock 1"] || "",
+        "Småplock 1 QT": Number(fields["Småplock 1 Quantity"] || 0),
+        "Småplock 2": fields["Småplock 2"] || "",
+        "Småplock 2 QT": Number(fields["Småplock 2 Quantity"] || 0),
+        "Småplock 3": fields["Småplock 3"] || "",
+        "Småplock 3 QT": Number(fields["Småplock 3 Quantity"] || 0),
+        "Småplock 4": fields["Småplock 4"] || "",
+        "Småplock 4 QT": Number(fields["Småplock 4 Quantity"] || 0),
 
-        // --- drinks -------------------
-        "Rött vin": fields["wine"],
-        "Vitt vin": fields["wine-2"],
-        Kaffepaket: fields["Coffee"],
+        // --- drinks --------------------------------
+        "Rött vin": fields["wine"] || "",
+        "Vitt vin": fields["wine-2"] || "",
+        Kaffepaket: fields["Coffee"] || "",
 
-        // --- addons / checkboxes ------
-        "Bordsorganisering": asCheckbox(fields["Bordsorganisering"]),
-        "DJ": asCheckbox(fields["DJ"]),
+        // --- addons / checkboxes -------------------
+        Bordsorganisering: asCheckbox(fields["Bordsorganisering"]),
+        DJ: asCheckbox(fields["DJ"]),
 
-        // --- misc ---------------------
-        "Övriga Kommentarer": fields["message"],
-        "Min Spend": fields["min-spend"],
+        // --- misc ----------------------------------
+        "Övriga Kommentarer": fields["message"] || "",
         Status: "Pending Response",
       },
     };
+
+    console.log(
+      "📦 Airtable payload:",
+      JSON.stringify(airtablePayload, null, 2)
+    );
 
     // ✨ Send to Airtable
     const atRes = await axios.post(
