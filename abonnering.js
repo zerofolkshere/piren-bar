@@ -1,179 +1,284 @@
-import express from "express";
-import axios from "axios";
-import crypto from "crypto";
-import dotenv from "dotenv";
+/* -------------------------------------------------------------
+ * Booking form logic – updated for current live form
+ * ------------------------------------------------------------- */
+document.addEventListener('DOMContentLoaded', function () {
 
-dotenv.config();
+(function(){
+    /* abort if the form is not on the page */
+    if(!document.querySelector('[ab-form="guests"]')) return;
 
-const app = express();
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+    /*────────────────────── DOM CACHE ─────────────────────*/
+    const qs  = s => document.querySelector(s);
+    const qsa = s => [...document.querySelectorAll(s)];
 
-const seenSubmissions = new Set(); // Prevent duplicates
+    const guestInput         = qs('[ab-form="guests"]');
+    const guestWarning       = qs('[warning="guest-capacity"]');
+    const datePicked         = qs('[ab-form="date-picked"]');
+    const warningUnavailable = qs('[warning="date-unavailable"]');
 
-// Verify webhook signature from Webflow
-function isValidSignature(req) {
-  const secret = process.env.WEBFLOW_SECRET;
-  const sig = req.headers["x-webflow-signature"];
-  if (!secret || !sig) return false;
+    const mapMain            = qs('[ab-form="map-main"]');
+    const mapTerrace         = qs('[ab-form="map-terrace"]');
 
-  const hash = crypto
-    .createHmac("sha256", secret)
-    .update(JSON.stringify(req.body))
-    .digest("hex");
+    const priceOutEls        = qsa('[ab-form="price-est"]');
+    const priceInputHidden   = qs('[ab-form="price-input"]');
+    const momsField          = qs('[ab-form="sum-moms"]');
+    const minSpendField      = qs('[ab-form="sum-min-spend"]');
+    const minSpendInput      = qs('[ab-form="input-min-spend"]');
 
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(hash));
-}
+    /*─────────────────── INITIAL VISUAL STATE ───────────────────*/
+    if(guestWarning)       guestWarning.style.display       = 'none';
+    if(warningUnavailable) warningUnavailable.style.display = 'none';
+    if(mapMain)            mapMain.style.display            = 'none';
+    if(mapTerrace)         mapTerrace.style.display         = 'none';
 
-// Safely format date and time strings into ISO
-function formatISOTime(date, time) {
-  if (!date || !time) throw new Error("Missing date or time");
+    /*─────────────────────── UTILITIES ─────────────────────────*/
+    const formatSEK = v => v.toLocaleString('sv-SE',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const pad = n => String(n).padStart(2, '0');
 
-  const [year, month, day] = date.split("-");
-  const [hour, minute] = time.split(":");
+    const parseDateParts = value => {
+        if(!value) return null;
+        const v = String(value).trim();
 
-  const t = new Date(+year, +month - 1, +day, +hour, +minute);
-  if (isNaN(t)) throw new Error(`Invalid time value: ${date} ${time}`);
+        let m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if(m) return { year:+m[1], month:+m[2], day:+m[3] };
 
-  return t.toISOString();
-}
+        m = v.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+        if(m) return { year:+m[1], month:+m[2], day:+m[3] };
 
-// Normalize checkbox-like values from Webflow into Airtable booleans
-function asCheckbox(value) {
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "boolean") return value;
+        m = v.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if(m) return { year:+m[3], month:+m[2], day:+m[1] };
 
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-    return ["true", "on", "yes", "1", "ja"].includes(v);
-  }
+        m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if(m) return { year:+m[3], month:+m[2], day:+m[1] };
 
-  if (typeof value === "number") {
-    return value === 1;
-  }
+        const d = new Date(v);
+        if(!isNaN(d.getTime())){
+            return {
+                year: d.getFullYear(),
+                month: d.getMonth() + 1,
+                day: d.getDate()
+            };
+        }
 
-  return false;
-}
-
-// Build Airtable-safe integer
-function asNumber(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-// Webflow form POST endpoint
-app.post("/webflow-form", async (req, res) => {
-  try {
-    console.log("⚡ Form webhook received:", req.body);
-
-    // Accept ONLY the “abonnering” form
-    const formName = req.body?.payload?.name?.trim().toLowerCase();
-    if (formName !== "abonnering") {
-      return res.status(200).send("Ignored – not abonnering form");
-    }
-
-    const fields = req.body?.payload?.data;
-    const submissionId = req.body?.payload?.id;
-
-    if (!fields || !submissionId) {
-      throw new Error("Missing payload.data or payload.id in request");
-    }
-
-    // Dedup
-    if (seenSubmissions.has(submissionId)) {
-      console.log("⚠️ Duplicate submission skipped:", submissionId);
-      return res.status(200).send("Duplicate ignored");
-    }
-    seenSubmissions.add(submissionId);
-
-    const start = formatISOTime(fields["date-picker"], fields["start-time"]);
-    const end = formatISOTime(fields["date-picker"], fields["end-time"]);
-
-    const bordsorganiseringValue = asCheckbox(fields["Bordsorganisering"]);
-    const djValue = asCheckbox(fields["DJ"]);
-
-    const airtablePayload = {
-      records: [
-        {
-          fields: {
-            Namn: fields.namn || "",
-            "E-Post": fields.email || "",
-            Telefon: fields.phone || "",
-            Företag: fields.company || "",
-            "Antal Gäster": asNumber(fields["guest-total"]),
-            Bokningsdatum: fields["date-picker"] || "",
-            Starttid: start,
-            Sluttid: end,
-
-            "Småplock 1": fields["Småplock 1"] || "",
-            "Småplock 1 QT": asNumber(fields["Småplock 1 Quantity"]),
-            "Småplock 2": fields["Småplock 2"] || "",
-            "Småplock 2 QT": asNumber(fields["Småplock 2 Quantity"]),
-            "Småplock 3": fields["Småplock 3"] || "",
-            "Småplock 3 QT": asNumber(fields["Småplock 3 Quantity"]),
-            "Småplock 4": fields["Småplock 4"] || "",
-            "Småplock 4 QT": asNumber(fields["Småplock 4 Quantity"]),
-
-            "Rött vin": fields["wine"] || "",
-            "Vitt vin": fields["wine-2"] || "",
-            Kaffepaket: fields["Coffee"] || "",
-
-            Bordsorganisering: bordsorganiseringValue,
-            DJ: djValue,
-
-            "Övriga Kommentarer": fields["message"] || "",
-            Status: "Pending Response",
-          },
-        },
-      ],
-      typecast: true,
+        return null;
     };
 
-    console.log("📥 Incoming checkbox raw values:", {
-      Bordsorganisering: fields["Bordsorganisering"],
-      DJ: fields["DJ"],
+    const toIsoDate = value => {
+        const p = parseDateParts(value);
+        if(!p) return '';
+        return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+    };
+
+    const getMonthNameSv = value => {
+        const p = parseDateParts(value);
+        if(!p) return '';
+        return new Date(p.year, p.month - 1, p.day)
+            .toLocaleString('sv-SE',{month:'long'})
+            .toLowerCase();
+    };
+
+    /*───────────────── TIME FIELD FORMATTING ─────────────────*/
+    qsa('[ab-form="time"]').forEach(inp=>{
+        inp.addEventListener('blur', e=>{
+            let v=e.target.value.replace(/[^0-9:]/g,'');
+            if(/^\d{2}$/.test(v)||/^\d{2}:$/.test(v)) v=v.replace(':','')+':00';
+            v=v.replace(/^(\d{2})(\d{2})$/, '$1:$2');
+            let [hh,mm]=v.split(':');
+            if(hh&&mm){
+                hh=Math.max(16,Math.min(23,parseInt(hh,10)));
+                mm='00';
+                v=String(hh).padStart(2,'0')+':'+mm;
+            }
+            e.target.value=v;
+        });
     });
 
-    console.log("📤 Converted checkbox values:", {
-      Bordsorganisering: airtablePayload.records[0].fields.Bordsorganisering,
-      BordsorganiseringType:
-        typeof airtablePayload.records[0].fields.Bordsorganisering,
-      DJ: airtablePayload.records[0].fields.DJ,
-      DJType: typeof airtablePayload.records[0].fields.DJ,
+    /*─────────────────── GUEST INPUT HANDLERS ─────────────────*/
+    guestInput.addEventListener('input', e=>{
+        const raw=e.target.value.replace(/\D/g,'');
+        e.target.value=raw;
+        if(guestWarning){
+            guestWarning.style.display = (raw!=='' && parseInt(raw,10)>48)?'block':'none';
+        }
+        updatePriceEstimate();
     });
 
-    console.log(
-      "📦 Airtable payload JSON:",
-      JSON.stringify(airtablePayload, null, 2)
-    );
+    guestInput.addEventListener('blur', e=>{
+        let v=parseInt(e.target.value,10);
+        if(isNaN(v)) v=40;
+        v=Math.max(40,Math.min(127,v));
+        e.target.value=v;
+        updatePriceEstimate();
+    });
 
-    const atRes = await axios.post(
-      `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${process.env.AIRTABLE_TABLE_NAME}`,
-      airtablePayload,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    /*───────────────────── DATE PICKER SETUP ───────────────────*/
+    let bookedDates = new Set();
 
-    console.log("✅ Airtable record created:", atRes.data);
-    res.sendStatus(200);
-  } catch (err) {
-    console.error(
-      "❌ Error handling form submission:",
-      err.response?.data || err.message
-    );
-    res.sendStatus(500);
-  }
+    const refreshBookedDates = ()=>{
+        bookedDates = new Set(
+            qsa('[ab-form="date-booked"]')
+              .map(el => toIsoDate(el.textContent.trim()))
+              .filter(Boolean)
+        );
+    };
+
+    refreshBookedDates();
+
+    new MutationObserver(refreshBookedDates)
+        .observe(document.body,{childList:true,subtree:true});
+
+    const checkDate = () => {
+        if(!datePicked) return;
+        const val = toIsoDate(datePicked.value);
+
+        if(warningUnavailable){
+            warningUnavailable.style.display = (val && bookedDates.has(val)) ? 'block':'none';
+        }
+
+        updatePriceEstimate();
+    };
+
+    if(datePicked){
+        ['input','change','blur'].forEach(evt=>datePicked.addEventListener(evt,checkDate));
+
+        new MutationObserver(checkDate)
+          .observe(datePicked,{attributes:true,attributeFilter:['value']});
+
+        let last=datePicked.value;
+        setInterval(()=>{
+            if(datePicked.value!==last){
+                last=datePicked.value;
+                checkDate();
+            }
+        },400);
+
+        checkDate();
+    }
+
+    /*────────────────────── MAIN CALCULATOR ───────────────────*/
+    function updatePriceEstimate(){
+
+        const guestCount = parseInt(guestInput.value||'0',10) || 1;
+        let total = 0;
+
+        /* 1. any input with ab-est="true" */
+        qsa('input[ab-est="true"]').forEach(inp=>{
+            const qty   = parseFloat(inp.value||'0');
+            const price = parseFloat(inp.getAttribute('ab-price')||'0');
+            if(!isNaN(qty) && !isNaN(price)) total += qty * price;
+        });
+
+        /* 2. connector radios (generic) */
+        qsa('input[type="radio"][ab-price-connect]').forEach(trigger=>{
+            if(!trigger.checked) return;
+
+            const units      = parseFloat(trigger.getAttribute('ab-units')||'0') || 1;
+            const multiplier = units * guestCount;
+
+            const addGroup = grpName => {
+                const sel = qs(`input[type="radio"][name="${grpName}"]:checked`);
+                if(!sel) return 0;
+
+                const p = parseFloat(sel.getAttribute('ab-price')||'0');
+                const d = parseFloat(sel.getAttribute('ab-discount')||'0');
+
+                let sub = p * multiplier;
+                if(!isNaN(d) && d>0) sub *= (1 - d/100);
+
+                return sub;
+            };
+
+            total += addGroup(trigger.getAttribute('ab-price-connect'));
+
+            const g2 = trigger.getAttribute('ab-price-connect-2');
+            if(g2) total += addGroup(g2);
+        });
+
+        /* 3. output fields */
+        priceOutEls.forEach(el=>{
+            el.textContent = formatSEK(total);
+            el.setAttribute('data-raw', total.toFixed(2));
+        });
+
+        if(priceInputHidden) priceInputHidden.value = total.toFixed(2);
+        if(momsField) momsField.textContent = formatSEK(total * 0.25);
+
+        /* 4. min-spend calculation */
+        if(datePicked && datePicked.value){
+            const monthStr = getMonthNameSv(datePicked.value);
+            let ms = 0;
+
+            qsa('[ab-form="min-spend-list"]>*').forEach(it=>{
+                const m = it.querySelector('[ab-form="min-spend-month"]');
+                const a = it.querySelector('[ab-form="min-spend"]');
+
+                if(m && a && m.textContent.trim().toLowerCase() === monthStr){
+                    const num = parseFloat(
+                        a.textContent.replace(/[^\d,.-]/g,'').replace(',','.')
+                    );
+                    if(!isNaN(num)) ms = num;
+                }
+            });
+
+            if(guestCount <= 80) ms = (ms / 134) * guestCount;
+
+            if(minSpendField){
+                minSpendField.textContent = formatSEK(ms);
+                minSpendField.setAttribute('data-raw', ms.toFixed(2));
+            }
+
+            if(minSpendInput) minSpendInput.value = ms.toFixed(2);
+
+            const r = qs('[ab-form="min-reached"]');
+            const n = qs('[ab-form="min-not-reached"]');
+
+            if(r && n){
+                if(total < ms){
+                    r.style.display='none';
+                    n.style.display='inline';
+                } else {
+                    r.style.display='inline';
+                    n.style.display='none';
+                }
+            }
+        } else {
+            if(minSpendInput) minSpendInput.value = '';
+            if(minSpendField){
+                minSpendField.textContent = '';
+                minSpendField.removeAttribute('data-raw');
+            }
+        }
+
+        /* 5. map / section highlighting by guest count */
+        if(mapMain)    mapMain.style.display = 'none';
+        if(mapTerrace) mapTerrace.style.display = 'none';
+
+        const gVal = guestInput.value.trim();
+        const gNum = parseInt(gVal,10);
+
+        if(gVal !== '' && !isNaN(gNum)){
+            if(gNum <= 47){
+                if(mapMain) mapMain.style.display = 'block';
+            } else if(gNum <= 80){
+                if(mapTerrace) mapTerrace.style.display = 'block';
+            } else {
+                if(mapMain)    mapMain.style.display = 'block';
+                if(mapTerrace) mapTerrace.style.display = 'block';
+            }
+        }
+    }
+
+    /*────────────────── GLOBAL EVENT HOOKS ─────────────────*/
+    qsa(`
+        input[ab-est="true"],
+        input[type="radio"][ab-price-connect],
+        input[type="radio"][ab-price-connect-2]
+    `).forEach(el=>{
+        ['input','change'].forEach(evt=>el.addEventListener(evt, updatePriceEstimate));
+    });
+
+    /* fire once on load */
+    updatePriceEstimate();
+})();
+
 });
-
-// Optional webhook secured by signature
-app.post("/some-other-webhook", (req, res) => {
-  if (!isValidSignature(req)) return res.status(403).send("Forbidden");
-  res.sendStatus(200);
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
